@@ -1,0 +1,23 @@
+# Rust build artifacts
+target/
+**/target/
+
+# macOS
+.DS_Store
+
+# Python / notebooks
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Editors
+.vscode/
+.idea/
+
+# Audio/render temp files
+*.wav.bak
+*.aif.bak
+*.tmp
+
+# Logs
+*.log
