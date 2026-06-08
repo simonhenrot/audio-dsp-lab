@@ -4,6 +4,19 @@ This repository contains a collection of small, self-contained projects focused 
 
 ## Projects
 
+### expressive-ks
+
+A real-time Rust prototype for expressive plucked-string synthesis based on a Karplus-Strong physical model.
+
+Path: `projects/expressive-ks/`
+
+Main focus:
+- physical-modeling sound synthesis
+- real-time audio DSP
+- expressive controller mapping
+- future Touché SE / MPE integration
+
+
 ### 1. Speech Denoising
 
 * Classical DSP (STFT, Wiener filtering)
@@ -19,6 +32,8 @@ This repository contains a collection of small, self-contained projects focused 
 
 * Simple spectrogram masking / NMF-based separation
 * Educational implementation with clear assumptions
+
+
 
 ## Goals
 
