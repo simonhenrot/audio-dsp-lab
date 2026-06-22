@@ -6,7 +6,7 @@ mod voice;
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{unbounded, Receiver};
-use midir::{Ignore, MidiInput};
+use midir::{Ignore, MidiInput, MidiInputConnection};
 
 use crate::midi::parse_midi;
 use crate::synth::Synth;
@@ -28,44 +28,53 @@ fn main() -> Result<()> {
 
     let (midi_tx, midi_rx) = unbounded();
 
-    let mut midi_in = MidiInput::new("ks-synth-midi-in")?;
+    let mut midi_in = MidiInput::new("expressive-ks-midi-in")?;
     midi_in.ignore(Ignore::None);
 
     let in_ports = midi_in.ports();
     if in_ports.is_empty() {
-        println!("No MIDI input ports found. Start anyway without MIDI.");
+        return Err(anyhow!("No MIDI input ports found"));
     }
 
-    let _midi_conn = if !in_ports.is_empty() {
-        println!("Available MIDI input ports:");
-        for (i, port) in in_ports.iter().enumerate() {
-            println!("  [{}] {}", i, midi_in.port_name(port)?);
-        }
+    println!("Available MIDI input ports:");
+    for (i, port) in in_ports.iter().enumerate() {
+        println!("  [{}] {}", i, midi_in.port_name(port)?);
+    }
 
-        println!("Select MIDI input port number: ");
-        let selected_index = read_usize_from_stdin()?;
+    println!("Select note MIDI input port number: ");
+    let note_port_index = read_usize_from_stdin()?;
+    if note_port_index >= in_ports.len() {
+        return Err(anyhow!("Note MIDI port index out of range"));
+    }
 
-        if selected_index >= in_ports.len() {
-            return Err(anyhow!("MIDI port index out of range"));
-        }
+    println!("Select expression MIDI input port number: ");
+    let expr_port_index = read_usize_from_stdin()?;
+    if expr_port_index >= in_ports.len() {
+        return Err(anyhow!("Expression MIDI port index out of range"));
+    }
 
-        let port = &in_ports[selected_index];
-        println!("Using MIDI input: {}", midi_in.port_name(port)?);
+    let note_port_name = midi_in.port_name(&in_ports[note_port_index])?;
+    let expr_port_name = midi_in.port_name(&in_ports[expr_port_index])?;
 
-        Some(midi_in.connect(
-            port,
-            "ks-synth-read-input",
-            move |_stamp, message, _| {
-                if let Some(msg) = parse_midi(message) {
-                    // println!("MIDI: {:?}", msg);
-                    let _ = midi_tx.send(msg);
-                }
-            },
-            (),
-        )?)
-    } else {
-        None
-    };
+    println!("Using note input: {}", note_port_name);
+    println!("Using expression input: {}", expr_port_name);
+
+    let note_conn = connect_midi_port(
+        "expressive-ks-note-input",
+        &in_ports[note_port_index],
+        midi_tx.clone(),
+        false,
+    )?;
+
+    let expr_conn = connect_midi_port(
+        "expressive-ks-expression-input",
+        &in_ports[expr_port_index],
+        midi_tx.clone(),
+        false,
+        //true,
+    )?;
+
+    let _midi_connections = vec![note_conn, expr_conn];
 
     match config.sample_format() {
         cpal::SampleFormat::F32 => {
@@ -81,6 +90,44 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn connect_midi_port(
+    connection_name: &str,
+    port: &midir::MidiInputPort,
+    midi_tx: crossbeam_channel::Sender<midi::MidiMessage>,
+    debug_log: bool,
+) -> Result<MidiInputConnection<()>> {
+    let mut midi_in = MidiInput::new(connection_name)?;
+    midi_in.ignore(Ignore::None);
+
+    let callback_name = connection_name.to_owned();
+
+    let conn = midi_in.connect(
+        port,
+        connection_name,
+        move |_stamp, message, _| {
+            if let Some(msg) = parse_midi(message) {
+                if debug_log {
+                    println!("MIDI [{}]: {:?}", callback_name, msg);
+                }
+                let _ = midi_tx.send(msg);
+            }
+        },
+        (),
+    )?;
+
+    Ok(conn)
+}
+
+fn read_usize_from_stdin() -> Result<usize> {
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let value = input
+        .trim()
+        .parse::<usize>()
+        .map_err(|_| anyhow!("Invalid number"))?;
+    Ok(value)
 }
 
 fn run_stream<T>(
@@ -124,14 +171,4 @@ where
     std::io::stdin().read_line(&mut input)?;
 
     Ok(())
-}
-
-fn read_usize_from_stdin() -> Result<usize> {
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let value = input
-        .trim()
-        .parse::<usize>()
-        .map_err(|_| anyhow!("Invalid number"))?;
-    Ok(value)
 }

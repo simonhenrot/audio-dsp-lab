@@ -81,8 +81,40 @@ impl Synth {
             MidiMessage::ControlChange { cc, val, .. } => {
                 let x = val as f32 / 127.0;
                 match cc {
+                    // Touché SE axes
+                    16 => {
+                        // X axis -> brightness
+                        self.global_brightness = x;
+                        for v in self.voices.iter_mut() {
+                            if v.is_active() {
+                                v.set_brightness(x);
+                            }
+                        }
+                    }
+                    17 => {
+                        // Y axis -> damping
+                        self.global_damping = 1.0 - x;
+                        for v in self.voices.iter_mut() {
+                            if v.is_active() {
+                                v.set_damping(1.0 - x);
+                            }
+                        }
+                    }
+                    18 => {
+                        // Z axis (pressure) -> excitation level
+                        self.global_excitation = 0.3 + 0.7 * x;
+                    }
+                    19 => {
+                        // 4th axis -> subtle brightness modulation
+                        let brightness = (self.global_brightness + 0.3 * (x - 0.5)).clamp(0.0, 1.0);
+                        for v in self.voices.iter_mut() {
+                            if v.is_active() {
+                                v.set_brightness(brightness);
+                            }
+                        }
+                    }
+                    // Anciens mappings clavier conservés
                     1 => {
-                        // Mod wheel -> brightness
                         self.global_brightness = x;
                         for v in self.voices.iter_mut() {
                             if v.is_active() {
@@ -91,7 +123,6 @@ impl Synth {
                         }
                     }
                     74 => {
-                        // Timbre / MPE standard-ish -> damping inverse
                         self.global_damping = 1.0 - x;
                         for v in self.voices.iter_mut() {
                             if v.is_active() {
@@ -100,12 +131,12 @@ impl Synth {
                         }
                     }
                     71 => {
-                        // Resonance-like -> excitation
                         self.global_excitation = x;
                     }
                     _ => {}
                 }
             }
+
 
             MidiMessage::PitchBend { value, .. } => {
                 // plage +/- 2 demi-tons
