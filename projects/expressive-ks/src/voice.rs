@@ -93,7 +93,7 @@ impl KarplusStrongVoice {
             .set_lowpass_coeff_from_brightness(self.params.brightness);
 
         let damping = clamp(self.params.damping, 0.0, 1.0);
-        self.decay_coef = 0.9995 - 0.02 * damping;
+        self.decay_coef = 0.9995 - 0.015 * damping;
 
         let excitation_gain = self.params.excitation_level * (0.3 + 0.7 * self.velocity);
 
@@ -147,7 +147,7 @@ impl KarplusStrongVoice {
 
         let out = delayed * self.amp_env;
 
-        if out.abs() < 1.0e-4 && self.age_samples > (self.sample_rate as u64 / 4) {
+        if out.abs() < 1.0e-5 && self.age_samples > (self.sample_rate as u64) {
             self.active = false;
         }
 

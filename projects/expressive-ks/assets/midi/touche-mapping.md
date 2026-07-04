@@ -1,36 +1,37 @@
 # Touché SE mapping
 
-## Observed CC output
+## Confirmed axis assignment (tested 2026-06-22)
 
-The Touché SE sends continuous Control Change messages on four CC numbers:
+Axis assignment determined empirically using a MIDI monitoring device.
 
-- CC16 : likely vertical pressure (top)
-- CC17 : likely right lateral axis
-- CC18 : likely left lateral axis
-- CC19 : likely vertical pressure (bottom)
+| CC  | Physical axis             | Range   |
+|-----|---------------------------|---------|
+| CC16 | Vertical pressure (bottom) | 0-127  |
+| CC17 | Vertical pressure (top)    | 0-127  |
+| CC18 | Left lateral axis          | 0-127  |
+| CC19 | Right lateral axis         | 0-127  |
 
-Note: exact axis assignment is based on empirical observation and may vary
-depending on the Touché preset in use.
+Note: CC18 (left lateral axis) shows reduced sensitivity compared to other
+axes. To be investigated in a future calibration session.
 
 ## Current synthesis mapping
 
-| CC | Axis (estimated) | Synthesis parameter | Effect |
-|---|---|---|---|
-| CC16 | Vertical pressure top | Brightness | Bright <-> dark timbre |
-| CC17 | Right lateral | Damping | Long <-> short sustain |
-| CC18 | Left lateral | Excitation level | Strong <-> soft attack |
-| CC19 | Vertical pressure bottom | Brightness modulation | Subtle tonal colour |
+| CC  | Physical axis              | Synthesis parameter  | Effect                        |
+|-----|----------------------------|----------------------|-------------------------------|
+| CC16 | Vertical pressure (bottom) | Brightness           | Bright <-> dark timbre        |
+| CC17 | Vertical pressure (top)    | Damping              | Long <-> short sustain        |
+| CC18 | Left lateral axis          | Excitation level     | Strong <-> soft attack        |
+| CC19 | Right lateral axis         | Brightness modulation| Subtle tonal colour           |
+
+## Known issues
+
+- CC18 sensitivity appears lower than the other axes — mapping may need
+  rescaling once the hardware issue is better understood
+- Mapping to be refined based on musical use and listening tests
 
 ## Rationale
 
-The mapping connects gesture dimensions to perceptually salient parameters:
-- pressure -> excitation and tonal energy
-- lateral motion -> spectral character and sustain
-- combined axes -> continuous morphing of the plucked string timbre
-
-## Notes
-
-- The Touché sends CC values continuously, even at rest, so some baseline
-  drift is expected
-- Mapping may need adjustment depending on the active Touché preset
-- Per-note control is planned for a future version
+Pressure axes are mapped to parameters that shape energy and attack,
+lateral axes to spectral character. This follows an intuition that
+vertical pressure maps naturally to tonal intensity, and lateral motion
+to timbral colour.

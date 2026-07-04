@@ -8,6 +8,15 @@ A real-time Rust prototype for expressive plucked-string synthesis based on a Ka
 
 The current version implements a lightweight **polyphonic plucked-string model** in Rust, with real-time audio output and MIDI control. The project is intended as a research and prototyping platform for studying how gesture can shape timbre in computationally efficient physical-modeling instruments.
 
+## Audio demos
+
+Short recordings of the current prototype:
+
+- `assets/audio/demo-01-plain-string.wav` — basic plucked string synthesis
+- `assets/audio/demo-02-touche-expression.wav` — Touché SE expressive control
+- `assets/audio/demo-03-musical-phrase.wav` — short musical phrase with gesture control
+
+
 ## Motivation
 
 This project is not only about implementing a classic Karplus-Strong string model. Its broader goal is to investigate a more interesting question:

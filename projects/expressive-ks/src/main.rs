@@ -14,13 +14,37 @@ use crate::synth::Synth;
 fn main() -> Result<()> {
     let host = cpal::default_host();
 
-    let device = host
-        .default_output_device()
-        .ok_or_else(|| anyhow!("No default audio output device found"))?;
+    //let device = host
+    //    .default_output_device()
+    //    .ok_or_else(|| anyhow!("No default audio output device found"))?;
+
+    println!("Available audio output devices:");
+    for d in host.output_devices()? {
+        if let Ok(name) = d.name() {
+            println!("  {}", name);
+        }
+    }
+
+
+    let device = {
+        let mut found = None;
+        for d in host.output_devices()? {
+            if let Ok(name) = d.name() {
+                println!("  Audio device: {}", name);
+                if name.contains("BlackHole") {
+                    found = Some(d);
+                    break;
+                }
+            }
+        }
+        found.ok_or_else(|| anyhow!("BlackHole audio device not found"))?
+    };
+
 
     let config = device.default_output_config()?;
     let sample_rate = config.sample_rate().0 as f32;
     let channels = config.channels() as usize;
+    let channels = channels.min(2); // forcer stéréo
 
     println!("Audio output: {}", device.name()?);
     println!("Sample rate: {}", sample_rate);

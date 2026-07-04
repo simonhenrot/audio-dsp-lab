@@ -21,11 +21,12 @@ impl Synth {
         Self {
             voices,
             sample_rate,
-            global_brightness: 0.7,
-            global_damping: 0.15,
-            global_excitation: 0.8,
+            global_brightness: 0.6,    // légèrement moins brillant par défaut
+            global_damping: 0.05,       // damping très faible -> sustain long
+            global_excitation: 0.7,
             pitch_bend_semitones: 0.0,
         }
+
     }
 
     fn make_params(&self) -> VoiceParams {
@@ -81,40 +82,34 @@ impl Synth {
             MidiMessage::ControlChange { cc, val, .. } => {
                 let x = val as f32 / 127.0;
                 match cc {
-                    // Touché SE axes
-                    16 => {
-                        // X axis -> brightness
-                        self.global_brightness = x;
-                        for v in self.voices.iter_mut() {
-                            if v.is_active() {
-                                v.set_brightness(x);
-                            }
-                        }
-                    }
+
+                    // CC17 : pression verticale haut -> excitation
+                    // plus de pression = attaque plus forte et brillante
                     17 => {
-                        // Y axis -> damping
-                        self.global_damping = 1.0 - x;
-                        for v in self.voices.iter_mut() {
-                            if v.is_active() {
-                                v.set_damping(1.0 - x);
-                            }
-                        }
-                    }
-                    18 => {
-                        // Z axis (pressure) -> excitation level
-                        self.global_excitation = 0.3 + 0.7 * x;
-                    }
-                    19 => {
-                        // 4th axis -> subtle brightness modulation
-                        let brightness = (self.global_brightness + 0.3 * (x - 0.5)).clamp(0.0, 1.0);
+                        self.global_excitation = 0.4 + 0.6 * x;
+                        let brightness = (self.global_brightness + 0.2 * x).clamp(0.0, 1.0);
                         for v in self.voices.iter_mut() {
                             if v.is_active() {
                                 v.set_brightness(brightness);
                             }
                         }
                     }
-                    // Anciens mappings clavier conservés
-                    1 => {
+
+                    // CC16 : pression verticale bas -> sustain / decay
+                    // pression basse = son qui tient longtemps
+                    // pression haute = coupure plus rapide
+                    16 => {
+                        // on inverse : x proche de 0 = sustain long
+                        self.global_damping = 0.02 + 0.18 * x;
+                        for v in self.voices.iter_mut() {
+                            if v.is_active() {
+                                v.set_damping(self.global_damping);
+                            }
+                        }
+                    }
+
+                    // CC19 : latéral droit -> brightness principal
+                    19 => {
                         self.global_brightness = x;
                         for v in self.voices.iter_mut() {
                             if v.is_active() {
@@ -122,20 +117,39 @@ impl Synth {
                             }
                         }
                     }
-                    74 => {
-                        self.global_damping = 1.0 - x;
+
+                    // CC18 : latéral gauche -> peu sensible, on le laisse en réserve
+                    // mapping léger pour ne pas le perdre complètement
+                    18 => {
+                        // rescaling : on étire la plage pour compenser la faible sensibilité
+                        let x_rescaled = (x * 2.5).clamp(0.0, 1.0);
+                        let brightness = (self.global_brightness + 0.15 * (x_rescaled - 0.5))
+                            .clamp(0.0, 1.0);
                         for v in self.voices.iter_mut() {
                             if v.is_active() {
-                                v.set_damping(1.0 - x);
+                                v.set_brightness(brightness);
                             }
                         }
                     }
-                    71 => {
-                        self.global_excitation = x;
+
+                    // Anciens mappings clavier conservés
+                    1  => {
+                        self.global_brightness = x;
+                        for v in self.voices.iter_mut() {
+                            if v.is_active() { v.set_brightness(x); }
+                        }
                     }
-                    _ => {}
+                    74 => {
+                        self.global_damping = 1.0 - x;
+                        for v in self.voices.iter_mut() {
+                            if v.is_active() { v.set_damping(1.0 - x); }
+                        }
+                    }
+                    71 => { self.global_excitation = x; }
+                    _  => {}
                 }
             }
+
 
 
             MidiMessage::PitchBend { value, .. } => {
