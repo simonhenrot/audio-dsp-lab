@@ -1,16 +1,19 @@
-use crate::dsp::{clamp, midi_note_to_freq};
+use crate::dsp::{clamp, midi_note_to_freq, BiquadFilter};
 use crate::midi::MidiMessage;
 use crate::voice::{KarplusStrongVoice, VoiceParams};
+
 
 pub struct Synth {
     voices: Vec<KarplusStrongVoice>,
     sample_rate: f32,
-
     global_brightness: f32,
     global_damping: f32,
     global_excitation: f32,
     pitch_bend_semitones: f32,
+    morph: f32,           // <- nouveau : axe de morphing [0,1]
+    body_filter: BiquadFilter,  // <- nouveau
 }
+
 
 impl Synth {
     pub fn new(sample_rate: f32, polyphony: usize) -> Self {
@@ -18,13 +21,18 @@ impl Synth {
             .map(|_| KarplusStrongVoice::new(sample_rate))
             .collect();
 
+        let mut body_filter = BiquadFilter::new();
+            body_filter.set_resonant_peak(180.0, 1.2, 4.0, sample_rate);
+
         Self {
             voices,
             sample_rate,
-            global_brightness: 0.6,    // légèrement moins brillant par défaut
-            global_damping: 0.05,       // damping très faible -> sustain long
+            global_brightness: 0.6,
+            global_damping: 0.05,
             global_excitation: 0.7,
             pitch_bend_semitones: 0.0,
+            morph: 0.0,
+            body_filter,
         }
 
     }
@@ -67,6 +75,7 @@ impl Synth {
                 params.brightness = clamp(self.global_brightness * (0.8 + 0.3 * v), 0.0, 1.0);
 
                 self.voices[idx].note_on(note, freq, vel, params);
+                self.voices[idx].apply_morph(self.morph);
             }
 
             MidiMessage::NoteOff { note, .. } => {
@@ -83,30 +92,24 @@ impl Synth {
                 let x = val as f32 / 127.0;
                 match cc {
 
-                    // CC17 : pression verticale haut -> excitation
-                    // plus de pression = attaque plus forte et brillante
+                    // CC17
                     17 => {
-                        self.global_excitation = 0.4 + 0.6 * x;
-                        let brightness = (self.global_brightness + 0.2 * x).clamp(0.0, 1.0);
+                        // pression verticale haut -> morphing entre état pincé et tenu
+                        self.morph = x;
                         for v in self.voices.iter_mut() {
                             if v.is_active() {
-                                v.set_brightness(brightness);
+                                v.apply_morph(self.morph);
                             }
                         }
                     }
 
-                    // CC16 : pression verticale bas -> sustain / decay
-                    // pression basse = son qui tient longtemps
-                    // pression haute = coupure plus rapide
+
+                    // CC16 
                     16 => {
-                        // on inverse : x proche de 0 = sustain long
-                        self.global_damping = 0.02 + 0.18 * x;
-                        for v in self.voices.iter_mut() {
-                            if v.is_active() {
-                                v.set_damping(self.global_damping);
-                            }
-                        }
+                        // pression verticale bas -> niveau d'excitation
+                        self.global_excitation = 0.3 + 0.7 * x;
                     }
+
 
                     // CC19 : latéral droit -> brightness principal
                     19 => {
@@ -164,11 +167,10 @@ impl Synth {
         for v in &mut self.voices {
             y += v.process();
         }
-
-        // simple gain compensation / soft clipping léger
-        let y = 0.2 * y;
+        let y = self.body_filter.process(0.2 * y);
         y.tanh()
     }
+
 
     pub fn sample_rate(&self) -> f32 {
         self.sample_rate

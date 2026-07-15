@@ -97,11 +97,34 @@ impl KarplusStrongVoice {
 
         let excitation_gain = self.params.excitation_level * (0.3 + 0.7 * self.velocity);
 
+        // let mut rng = rand::thread_rng();
+        // for s in self.delay.iter_mut() {
+        //     let noise: f32 = rng.gen_range(-1.0..1.0);
+        //     *s = excitation_gain * noise;
+        // }
+
+        // Nouveau — bruit coloré filtré, dépendant de la vélocité
+        // haute vélocité = excitation plus brillante (bruit moins filtré)
+        // basse vélocité = excitation plus douce (bruit plus filtré)
         let mut rng = rand::thread_rng();
-        for s in self.delay.iter_mut() {
-            let noise: f32 = rng.gen_range(-1.0..1.0);
-            *s = excitation_gain * noise;
-        }
+        let brightness_coeff = 0.1 + 0.85 * self.params.brightness;
+        let mut filtered_noise = 0.0_f32;
+        let len = self.delay.len() as f32;
+
+        for (i, s) in self.delay.iter_mut().enumerate() {
+            let white: f32 = rng.gen_range(-1.0..1.0);
+            // one-pole lowpass sur le bruit : colore l'excitation
+            filtered_noise = brightness_coeff * white + (1.0 - brightness_coeff) * filtered_noise;
+
+            let pos = i as f32 / len as f32;
+            // forme d'enveloppe spatiale : zéro aux extrémités, max au centre
+            let shape = (std::f32::consts::PI * pos).sin();
+            // décroissance temporelle : l'excitation s'atténue le long du buffer
+            let decay = (-4.0 * pos).exp();
+
+        *s = excitation_gain * filtered_noise * shape * decay;
+}
+
     }
 
     pub fn note_off(&mut self) {
@@ -153,4 +176,27 @@ impl KarplusStrongVoice {
 
         out
     }
+
+    /// Applique un morphing temps réel entre état pincé et état tenu
+    pub fn apply_morph(&mut self, morph: f32) {
+        let morph = morph.clamp(0.0, 1.0);
+
+        // État A (morph=0) : pincé sec
+        let damping_a = 0.25;
+        let brightness_a = 0.5;
+        let decay_a = 0.9993;
+
+        // État B (morph=1) : tenu résonant
+        let damping_b = 0.0002;
+        let brightness_b = 0.82;
+        let decay_b = 0.9999;
+
+        let damping = damping_a + morph * (damping_b - damping_a);
+        let brightness = brightness_a + morph * (brightness_b - brightness_a);
+        let decay = decay_a + morph * (decay_b - decay_a);
+
+        self.loop_filter.set_lowpass_coeff_from_brightness(brightness);
+        self.decay_coef = decay - 0.015 * damping;
+    }
+
 }
