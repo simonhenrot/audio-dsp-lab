@@ -9,6 +9,7 @@ pub struct Synth {
     global_brightness: f32,
     global_damping: f32,
     global_excitation: f32,
+    global_pluck_position: f32,   // <- nouveau
     pitch_bend_semitones: f32,
     morph: f32,           // <- nouveau : axe de morphing [0,1]
     body_filter: BiquadFilter,  // <- nouveau
@@ -30,6 +31,7 @@ impl Synth {
             global_brightness: 0.6,
             global_damping: 0.05,
             global_excitation: 0.7,
+            global_pluck_position: 0.3,
             pitch_bend_semitones: 0.0,
             morph: 0.0,
             body_filter,
@@ -42,7 +44,7 @@ impl Synth {
             brightness: self.global_brightness,
             damping: self.global_damping,
             excitation_level: self.global_excitation,
-            pickup_position: 0.5,
+            pickup_position: self.global_pluck_position,
             vibrato_depth: 0.0,
             vibrato_rate_hz: 5.0,
         }
@@ -91,23 +93,31 @@ impl Synth {
             MidiMessage::ControlChange { cc, val, .. } => {
                 let x = val as f32 / 127.0;
                 match cc {
-
-                    // CC17 : pression verticale haut -> morphing UNIQUEMENT
+                    // CC17 : pression verticale haut -> morphing / archet (temps réel)
                     17 => {
                         self.morph = x;
-                        //println!("morph -> {:.3}", self.morph); // debug temporaire
                         for v in self.voices.iter_mut() {
-                            if v.is_active() {
-                                v.apply_morph(self.morph);
-                            }
+                            if v.is_active() { v.apply_morph(self.morph); }
                         }
                     }
-
-                    // CC16, CC18, CC19 : ignorés pendant le debug
-                    16 | 18 | 19 => {}
-
+                    // CC16 : pression verticale bas -> excitation (prochaine note)
+                    16 => {
+                        self.global_excitation = 0.3 + 0.7 * x;
+                    }
+                    // CC19 : latéral droit -> brightness (temps réel)
+                    19 => {
+                        self.global_brightness = x;
+                        for v in self.voices.iter_mut() {
+                            if v.is_active() { v.set_brightness(x); }
+                        }
+                    }
+                    // CC18 : latéral gauche -> position de pincement (prochaine note)
+                    18 => {
+                        // rescaling pour compenser la faible sensibilité
+                        self.global_pluck_position = 0.1 + 0.4 * (x * 1.5).clamp(0.0, 1.0);
+                    }
                     // Mappings clavier conservés
-                    1 => {
+                    1  => {
                         self.global_brightness = x;
                         for v in self.voices.iter_mut() {
                             if v.is_active() { v.set_brightness(x); }
@@ -123,8 +133,6 @@ impl Synth {
                     _ => {}
                 }
             }
-
-
 
 
             MidiMessage::PitchBend { value, .. } => {

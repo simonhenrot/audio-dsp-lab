@@ -107,35 +107,39 @@ impl KarplusStrongVoice {
 
         let excitation_gain = self.params.excitation_level * (0.3 + 0.7 * self.velocity);
 
-        // let mut rng = rand::thread_rng();
-        // for s in self.delay.iter_mut() {
-        //     let noise: f32 = rng.gen_range(-1.0..1.0);
-        //     *s = excitation_gain * noise;
-        // }
-
-        // Nouveau — bruit coloré filtré, dépendant de la vélocité
-        // haute vélocité = excitation plus brillante (bruit moins filtré)
-        // basse vélocité = excitation plus douce (bruit plus filtré)
-        let mut rng = rand::thread_rng();
+        let n = self.delay.len();
         let brightness_coeff = 0.1 + 0.85 * self.params.brightness;
+
+        // 1. Bruit coloré (one-pole)
+        let mut noise_buf = vec![0.0f32; n];
         let mut filtered_noise = 0.0_f32;
-        let len = self.delay.len() as f32;
-
-        for (i, s) in self.delay.iter_mut().enumerate() {
+        let mut rng = SmallRng::from_entropy();
+        for v in noise_buf.iter_mut() {
             let white: f32 = rng.gen_range(-1.0..1.0);
-            // one-pole lowpass sur le bruit : colore l'excitation
             filtered_noise = brightness_coeff * white + (1.0 - brightness_coeff) * filtered_noise;
+            *v = filtered_noise;
+        }
 
-            let pos = i as f32 / len as f32;
-            // forme d'enveloppe spatiale : zéro aux extrémités, max au centre
+        // 2. Comb filter pour la position de pincement
+        //    Notches aux harmoniques de 1/p => creux spectraux physiquement motivés
+        let p = self.params.pickup_position.clamp(0.05, 0.5);
+        let d = (p * n as f32).round() as usize;
+        for i in 0..n {
+            let delayed = if i >= d { noise_buf[i - d] } else { 0.0 };
+            noise_buf[i] = 0.5 * (noise_buf[i] - delayed);
+        }
+
+        // 3. Fenêtre spatiale + décroissance temporelle + écriture
+        for i in 0..n {
+            let pos = i as f32 / n as f32;
             let shape = (std::f32::consts::PI * pos).sin();
-            // décroissance temporelle : l'excitation s'atténue le long du buffer
             let decay = (-4.0 * pos).exp();
-
-        *s = excitation_gain * filtered_noise * shape * decay;
-}
+            self.delay[i] = excitation_gain * noise_buf[i] * shape * decay;
+        }
 
     }
+
+    
 
     pub fn note_off(&mut self) {
         self.decay_coef *= 0.995;
