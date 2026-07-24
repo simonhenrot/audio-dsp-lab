@@ -18,6 +18,8 @@ __pycache__/
 *.wav.bak
 *.aif.bak
 *.tmp
+morph_test_*.wav
+
 
 # Logs
 *.log
