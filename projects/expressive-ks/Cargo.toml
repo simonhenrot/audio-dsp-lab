@@ -6,6 +6,6 @@ edition = "2021"
 [dependencies]
 cpal = "0.15"
 midir = "0.10"
-rand = "0.8"
+rand = { version = "0.8", features = ["small_rng"] }
 anyhow = "1.0"
 crossbeam-channel = "0.5"

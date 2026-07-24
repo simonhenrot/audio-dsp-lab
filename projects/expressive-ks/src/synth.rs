@@ -92,10 +92,10 @@ impl Synth {
                 let x = val as f32 / 127.0;
                 match cc {
 
-                    // CC17
+                    // CC17 : pression verticale haut -> morphing UNIQUEMENT
                     17 => {
-                        // pression verticale haut -> morphing entre état pincé et tenu
                         self.morph = x;
+                        //println!("morph -> {:.3}", self.morph); // debug temporaire
                         for v in self.voices.iter_mut() {
                             if v.is_active() {
                                 v.apply_morph(self.morph);
@@ -103,40 +103,11 @@ impl Synth {
                         }
                     }
 
+                    // CC16, CC18, CC19 : ignorés pendant le debug
+                    16 | 18 | 19 => {}
 
-                    // CC16 
-                    16 => {
-                        // pression verticale bas -> niveau d'excitation
-                        self.global_excitation = 0.3 + 0.7 * x;
-                    }
-
-
-                    // CC19 : latéral droit -> brightness principal
-                    19 => {
-                        self.global_brightness = x;
-                        for v in self.voices.iter_mut() {
-                            if v.is_active() {
-                                v.set_brightness(x);
-                            }
-                        }
-                    }
-
-                    // CC18 : latéral gauche -> peu sensible, on le laisse en réserve
-                    // mapping léger pour ne pas le perdre complètement
-                    18 => {
-                        // rescaling : on étire la plage pour compenser la faible sensibilité
-                        let x_rescaled = (x * 2.5).clamp(0.0, 1.0);
-                        let brightness = (self.global_brightness + 0.15 * (x_rescaled - 0.5))
-                            .clamp(0.0, 1.0);
-                        for v in self.voices.iter_mut() {
-                            if v.is_active() {
-                                v.set_brightness(brightness);
-                            }
-                        }
-                    }
-
-                    // Anciens mappings clavier conservés
-                    1  => {
+                    // Mappings clavier conservés
+                    1 => {
                         self.global_brightness = x;
                         for v in self.voices.iter_mut() {
                             if v.is_active() { v.set_brightness(x); }
@@ -149,9 +120,10 @@ impl Synth {
                         }
                     }
                     71 => { self.global_excitation = x; }
-                    _  => {}
+                    _ => {}
                 }
             }
+
 
 
 

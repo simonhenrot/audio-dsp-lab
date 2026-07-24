@@ -1,4 +1,6 @@
 use rand::Rng;
+use rand::rngs::SmallRng;
+use rand::SeedableRng;
 
 use crate::dsp::{clamp, OnePole};
 
@@ -42,6 +44,11 @@ pub struct KarplusStrongVoice {
 
     params: VoiceParams,
     age_samples: u64,
+
+    morph:f32,
+
+    bow_rng: SmallRng,
+    bow_filtered: f32,
 }
 
 impl KarplusStrongVoice {
@@ -59,6 +66,9 @@ impl KarplusStrongVoice {
             decay_coef: 0.9999,
             params: VoiceParams::default(),
             age_samples: 0,
+            morph: 0.0,
+            bow_rng: SmallRng::from_entropy(),
+            bow_filtered: 0.0,
         }
     }
 
@@ -143,15 +153,10 @@ impl KarplusStrongVoice {
     }
 
     pub fn process(&mut self) -> f32 {
-        if !self.active {
-            return 0.0;
-        }
+        if !self.active { return 0.0; }
 
         let len = self.delay.len();
-        if len < 4 {
-            self.active = false;
-            return 0.0;
-        }
+        if len < 4 { self.active = false; return 0.0; }
 
         let read_pos = (self.write_idx as f32 - self.delay_len).rem_euclid(len as f32);
         let i0 = read_pos.floor() as usize;
@@ -160,43 +165,65 @@ impl KarplusStrongVoice {
 
         let delayed = self.delay[i0] * (1.0 - frac) + self.delay[i1] * frac;
         let filtered = self.loop_filter.process(delayed);
-        let new_sample = filtered * self.decay_coef;
+
+        let effective_decay = (self.decay_coef + 0.0008 * self.morph).min(0.99999);
+        let mut new_sample = filtered * effective_decay;
+
+        // === Injection d'excitation continue (modèle d'archet) ===
+        // Quand morph est élevé, on injecte du bruit filtré dans la ligne
+        // pour entretenir la vibration — comme un archet sur une corde.
+        if self.morph > 0.2 {
+            let bow_pressure = (self.morph - 0.2) / 0.8;  // 0 à 1
+            let bow_noise = self.bow_rng.gen_range(-1.0..1.0);
+            // Filtrage léger du bruit d'archet
+            self.bow_filtered = 0.3 * bow_noise + 0.7 * self.bow_filtered;
+            // Injection proportionnelle à la pression d'archet
+            new_sample += 0.015 * bow_pressure * self.bow_filtered;
+        }
 
         self.delay[self.write_idx] = new_sample;
         self.write_idx = (self.write_idx + 1) % len;
-
         self.age_samples += 1;
-        self.amp_env *= 0.999995;
+
+        let env_rate = 0.999999 - 0.000004 * (1.0 - self.morph);
+        self.amp_env *= env_rate;
 
         let out = delayed * self.amp_env;
 
-        if out.abs() < 1.0e-5 && self.age_samples > (self.sample_rate as u64) {
+        if out.abs() < 1.0e-7 && self.age_samples > (self.sample_rate as u64) {
             self.active = false;
         }
 
         out
     }
 
+
+
     /// Applique un morphing temps réel entre état pincé et état tenu
     pub fn apply_morph(&mut self, morph: f32) {
         let morph = morph.clamp(0.0, 1.0);
-
-        // État A (morph=0) : pincé sec
-        let damping_a = 0.25;
-        let brightness_a = 0.5;
-        let decay_a = 0.9993;
-
-        // État B (morph=1) : tenu résonant
-        let damping_b = 0.0002;
-        let brightness_b = 0.82;
-        let decay_b = 0.9999;
-
-        let damping = damping_a + morph * (damping_b - damping_a);
+        self.morph = morph;
+        let damping_a    = 0.25_f32;
+        let brightness_a = 0.5_f32;
+        let decay_a      = 0.9985_f32;
+        let damping_b    = 0.01_f32;
+        let brightness_b = 0.85_f32;
+        let decay_b      = 0.99997_f32;
+        let damping    = damping_a    + morph * (damping_b    - damping_a);
         let brightness = brightness_a + morph * (brightness_b - brightness_a);
-        let decay = decay_a + morph * (decay_b - decay_a);
-
+        let decay      = decay_a      + morph * (decay_b      - decay_a);
         self.loop_filter.set_lowpass_coeff_from_brightness(brightness);
         self.decay_coef = decay - 0.015 * damping;
+        //println!("apply_morph: morph={:.3} decay_coef={:.6} brightness={:.3}",
+        //        morph, self.decay_coef, brightness);
+        // Réinjection d'énergie en état B
+        if morph > 0.3 && self.active {
+            let boost = 1.0 + 0.06 * (morph - 0.3);
+            for s in self.delay.iter_mut() {
+                *s *= boost;
+            }
+        }
     }
+
 
 }
